@@ -52,36 +52,6 @@ class ThreadedCartpole(object):
 
         return discounted_r
 
-    def modified_rewards0(self, history, mult=100):
-        """
-        Poor results
-        """
-        state_id = ThreadedCartpole.STATE_ID
-        action_id = ThreadedCartpole.ACTION_ID
-        reward_id = ThreadedCartpole.REWARD_ID
-
-        states = history[:, state_id]
-        actions = history[:, action_id]
-        rewards = history[:, reward_id]
-
-        discounted_r = np.zeros_like(rewards)
-
-        idx = 0
-        for s, a, r in zip(states, actions, rewards):
-            nrew = 0
-            x = s[0]
-            theta = s[2]
-
-            if ((theta < 0) and (a == 1)) or ((theta > 0) and (a == 0)):
-                nrew = -np.abs(x)*r*mult
-            else:
-                nrew = min(500, 1./abs(x))*r
-
-            discounted_r[idx] = nrew
-            idx += 1
-
-        return discounted_r
-
     def compute_loss(self, tf_output):
         """
         Total number of actions(n) is the same as the first entry of output
@@ -119,8 +89,6 @@ class ThreadedCartpole(object):
 
         activation = tf.nn.relu
         hidden = input0
-        print(args)
-        print(len(args))
         for idx, size in enumerate(args):
             print("IDX: " + str(idx))
             if idx == len(args) - 1:
@@ -132,8 +100,6 @@ class ThreadedCartpole(object):
                                           biases_initializer=None)
 
         action_prob = hidden
-        print(input0)
-        print(action_prob)
 
         # LOSS
         loss = self.compute_loss(action_prob)
