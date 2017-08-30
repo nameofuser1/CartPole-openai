@@ -4,6 +4,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from time import sleep
 from Threaded import Threaded
+from memory import SimpleMemory
 
 
 RENDER_POOL_NAME = "CartPoleRender"
@@ -25,20 +26,36 @@ class ThreadedCartpole(object):
     REWARD_ID = 3
     ACTION_ID = 2
 
-    def __init__(self, model_name='model1'):
+    def __init__(self, model_name='model1', gamma=0.95, explore_rate=1.,
+                 explore_decay=0.95, min_explore_rate=0.05):
+        """
+        gamma               --- discount rate
+        explore_rate        --- exploration rate to begin with
+        explore_decay       --- explore_rate *= explore_decay for each training
+            cycle
+        min_explore_rate    --- minimum possible explore_rate
+        """
         self.env = gym.make('CartPole-v1')
 
+        self.explore_decay = explore_decay
+        self.explore_rate = explore_rate
+        self.min_explore_rate = min_explore_rate
+        self.gamma = gamma
+
         hidden_sizes = [8, 2]
-        input_, action_prob, gradients, gradient_holders,\
+        input_, Qout, Qtarget,\
             updateBatch, loss = self.create_network(4, 1e-2, *hidden_sizes)
 
         self.input_ = input_
-        self.action_prob = action_prob
-        self.gradients = gradients
-        self.gradient_holders = gradient_holders
+        self.Qout = Qout
+        self.Qtarget = Qtarget
         self.updateBatch = updateBatch
         self.loss = loss
 
+        # For experience replay
+        self._memory = SimpleMemory(memory_size=2000)
+
+        # Model name it will be saved with
         self.model_name = model_name
 
         print("Network created")
@@ -52,7 +69,7 @@ class ThreadedCartpole(object):
 
         return discounted_r
 
-    def compute_loss(self, tf_output):
+    def compute_loss(self, Qout):
         """
         Total number of actions(n) is the same as the first entry of output
             shape since it is equal to number of inputs. Each output contains 2
@@ -61,20 +78,10 @@ class ThreadedCartpole(object):
             choose our probability by summing even number in range of 2*n with
             our actions which is 0 or 1.
         """
-        self.reward_holder = tf.placeholder(shape=(None,), dtype=tf.float32)
-        self.action_holder = tf.placeholder(shape=(None,), dtype=tf.int32)
+        Qtarget = tf.placeholder(shape=(None, 2), dtype=tf.float32)
+        loss = tf.reduce_mean(tf.square(Qtarget - Qout))
 
-        self.indexes = tf.range(0, tf.shape(tf_output)[0])\
-            * tf.shape(tf_output)[1] + self.action_holder
-
-        self.responsible_outputs = tf.gather(tf.reshape(tf_output, [-1]),
-                                             self.indexes)
-
-        # Minus for optimality
-        loss = -tf.reduce_mean(tf.log(self.responsible_outputs) *
-                               self.reward_holder)
-
-        return loss
+        return Qtarget, loss
 
     def create_network(self, in_size=4, lr=1e-2, *args):
         """
@@ -85,66 +92,84 @@ class ThreadedCartpole(object):
             2 outputs (left, right)
         """
         # Input layer
-        input0 = tf.placeholder(shape=[None, in_size], dtype=tf.float32)
+        input0 = tf.placeholder(shape=(None, in_size), dtype=tf.float32)
 
         activation = tf.nn.relu
         hidden = input0
         for idx, size in enumerate(args):
-            print("IDX: " + str(idx))
             if idx == len(args) - 1:
-                print("Changed activation")
-                activation = tf.nn.softmax
+                activation = None
 
+            print(hidden)
             hidden = slim.fully_connected(hidden, size,
                                           activation_fn=activation,
                                           biases_initializer=None)
-
-        action_prob = hidden
+        Qout = hidden
+        print(Qout)
 
         # LOSS
-        loss = self.compute_loss(action_prob)
+        Qtarget, loss = self.compute_loss(Qout)
 
-        # Computing gradients
+        # Optimizing loss function
         tvars = tf.trainable_variables()
         gradients = tf.gradients(loss, tvars)
 
-        gradient_holders = []
-        for idx, tvar in enumerate(tvars):
-            gradient_holders.append(tf.placeholder(dtype=tf.float32,
-                                                   name=str(idx)+"_holder"))
-
         optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-        updateBatch = optimizer.apply_gradients(zip(gradient_holders, tvars))
+        updateBatch = optimizer.apply_gradients(zip(gradients, tvars))
 
-        return (input0, action_prob, gradients, gradient_holders,
-                updateBatch, loss)
+        return (input0, Qout, Qtarget, updateBatch, loss)
 
-    def __choose_action(self, probs):
+    def __reshape_state(self, s):
+        return np.array(s).reshape((1, 4))
+
+    def __choose_action(self, Qout):
         """
         Probalistically choose action based on computed
             action probabilities
         """
-        action_prob = np.random.choice(probs, p=probs)
-        chosen_action = np.argmax(probs == action_prob)
+        if np.random.rand() <= self.explore_rate:
+            action = self.env.action_space.sample()
+        else:
+            action = np.argmax(Qout)
 
-        return chosen_action
+        return action
 
-    def __clear_gradient_buffers(self, buf):
-        for idx, grad in enumerate(buf):
-            buf[idx] = grad*0.0
-
-        return buf
-
-    def __prepare_gradient_buffers(self, sess):
+    def __update(self, sess, epochs=32, batch_size=32):
         """
-        Since we don't know dimensions beforehand, we compute trainable
-            variables and get list of numpy arrays of needed
-            dimensions(each variable gives one gradient d(loss)/d(var))
+        Performs batch training using experience replay memory
         """
-        gradient_buffer = sess.run(tf.trainable_variables())
-        gradient_buffer = self.__clear_gradient_buffers(gradient_buffer)
+        if self._memory.size() < batch_size:
+            return None
 
-        return gradient_buffer
+        # reward_id = ThreadedCartpole.REWARD_ID
+
+        for i in range(epochs):
+            targetQ = []
+
+            memory_batch = self._memory.remember(batch_size=batch_size)
+            # memory_batch[:, reward_id] =\
+            #    self.discounted_rewards(memory_batch[:, reward_id])
+
+            for s, s1, a, r in memory_batch:
+                s1_q = sess.run(self.Qout, feed_dict={self.input_: s1})[0]
+                maxq = np.argmax(s1_q)
+
+                # Compute target q-value
+                targetQ = r + self.gamma*maxq
+
+                # Compute current q-value
+                currentQ = sess.run(self.Qout, feed_dict={self.input_: s})
+
+                # Replace q-value for used action
+                currentQ[0][a] = targetQ
+
+                # Train
+                sess.run(self.updateBatch, feed_dict={self.input_: s,
+                                                      self.Qtarget: currentQ})
+
+        if self.explore_rate > self.min_explore_rate:
+            self.explore_rate = max(self.explore_rate*self.explore_decay,
+                                    self.min_explore_rate)
 
     def train(self, episodes=5000, max_steps=1000, episodes_per_log=100):
         """
@@ -155,65 +180,35 @@ class ThreadedCartpole(object):
         with tf.Session() as sess:
             try:
                 sess.run(tf.initialize_all_variables())
-
-                gradients_buffer = self.__prepare_gradient_buffers(sess)
                 rewards = []
 
                 for i in range(episodes):
-                    s = self.env.reset()
+                    s = self.__reshape_state(self.env.reset())
                     episode_reward = 0
-                    np_history = []
 
                     for j in range(max_steps):
-                        feed_dict = {
-                            self.input_: [s]
-                        }
+                        if np.random.rand() <= self.explore_rate:
+                            action = self.env.action_space.sample()
+                        else:
+                            Qout = sess.run(self.Qout,
+                                            feed_dict={self.input_: s})[0]
+                            action = self.__choose_action(Qout)
 
-                        action_probs = sess.run(self.action_prob,
-                                                feed_dict=feed_dict)[0]
-                        action = self.__choose_action(action_probs)
-
+                        # Next step
                         s1, r, d, _ = self.env.step(action)
-                        np_history.append([s, s1, action, r])
+                        s1 = self.__reshape_state(s1)
+
+                        # Memorize new state
+                        self._memory.memorize((s, s1, action, r))
 
                         s = s1
                         episode_reward += r
 
                         if d:
-                            state_id = ThreadedCartpole.STATE_ID
-                            action_id = ThreadedCartpole.ACTION_ID
-                            reward_id = ThreadedCartpole.REWARD_ID
-
                             rewards.append(episode_reward)
-
-                            np_history = np.array(np_history)
-                            np_history[:, reward_id] =\
-                                self.modified_rewards0(np_history)
-
-                            feed_dict = {
-                                # Do we really need vstack? Tested with numpy
-                                # seems like slice is already stacked
-                                self.input_: np.vstack(np_history[:, state_id]),
-                                self.action_holder: np_history[:, action_id],
-                                self.reward_holder: np_history[:, reward_id]
-                            }
-
-                            # Compute gradients
-                            gradients = sess.run(self.gradients,
-                                                 feed_dict=feed_dict)
-
-                            for idx, grad in enumerate(gradients):
-                                gradients_buffer[idx] += grad
-
-                            if (i % EPISODES_PER_UPDATE == 0) and (i != 0):
-                                feed_dict = dict(zip(self.gradient_holders,
-                                                     gradients_buffer))
-
-                                sess.run(self.updateBatch, feed_dict=feed_dict)
-                                gradients_buffer = self.\
-                                    __clear_gradient_buffers(gradients_buffer)
-
                             break
+
+                    self.__update(sess, epochs=1, batch_size=32)
 
                     if (i % episodes_per_log == 0) and (i != 0):
                         print("Passed %d episodes" % i)
