@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from collections import deque
 from random import sample
+import numpy as np
 
 
 class Memory(object):
@@ -24,8 +25,9 @@ class Memory(object):
 
 class SimpleMemory(Memory):
 
-    def __init__(self, memory_size=2000):
-        self._memory = deque(maxlen=memory_size)
+    def __init__(self, capacity=2000):
+        self._memory = deque(maxlen=capacity)
+        self._capacity = capacity
 
     def memorize(self, state):
         """
@@ -42,3 +44,7 @@ class SimpleMemory(Memory):
 
     def size(self):
         return len(self._memory)
+
+    @property
+    def capacity(self):
+        return self._capacity
