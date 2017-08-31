@@ -44,8 +44,8 @@ class CartpoleAgent(object):
         put_xrange = range(self._state_size)
         put_yrange = range(self._action_space_size)
         for s, s1, a, r in batch:
-            s = np.reshape(s, (1, 4))
-            s1 = np.reshape(s, (1, 4))
+            s = np.reshape(s, (1, self._state_size))
+            s1 = np.reshape(s, (1, self._state_size))
             q_target = self._net.predict(s)
             action_q = r + self._gamma*max(self._net.predict(s1))
 

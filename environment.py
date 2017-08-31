@@ -10,55 +10,42 @@ from time import sleep
 
 EPISODES = 10000
 
-STATE_SIZE = 4
+STATE_SIZE = 2
 ACTION_SPACE_SIZE = 2
 MEMORY_SIZE = 512
 
+ACTION_LEFT = 0
+ACTION_RIGHT = 1
 
-def discounted_rewards(r, gamma=0.99):
-    discounted_r = np.zeros_like(r)
-    running_add = 0
-    for t in reversed(xrange(0, len(r))):
-        running_add = running_add * gamma + r[t]
-        discounted_r[t] = running_add
-
-    return discounted_r
+C = 100.
 
 
-def episode_rerewarding(samples, rewards):
-    discounted_r = discounted_rewards(rewards)
-    for i in range(len(samples)):
-        samples[i][3] = discounted_r[i]
+def process_sample(sample, c=10.):
+    theta = sample[0][2]
+    a = sample[2]
 
-    return samples
+    if (theta < 0 and a == ACTION_LEFT) or (theta > 0 and a == ACTION_RIGHT):
+        sample[3] *= c
+
+    sample[0] = sample[0][2:]
+    sample[1] = sample[1][2:]
+
+    return sample
 
 
 def fill_memory(env, memory):
     s = env.reset()
-    samples = []
-    rewards = []
-    printed = False
 
     while memory.capacity != memory.size():
         a = env.action_space.sample()
         s1, r, d, _ = env.step(a)
 
-        samples.append([s, s1, a, r])
-        rewards.append(r)
+        sample = process_sample([s, s1, a, r], c=C)
+        memory.memorize(sample)
 
         s = s1
 
         if d:
-            if not printed:
-                print(samples)
-            samples = episode_rerewarding(samples, rewards)
-            if not printed:
-                print(samples)
-                printed = True
-
-            for sample in samples:
-                memory.memorize(sample)
-
             env.reset()
 
     return memory
@@ -93,23 +80,17 @@ if __name__ == "__main__":
             done = False
 
             episode_reward = 0
-            samples = []
-            episode_rewards = []
 
             while not done:
                 a = agent.act(s)
                 s1, r, done, _ = env.step(a)
 
+                sample = process_sample([s, s1, a, r], c=C)
+                agent.memorize(sample)
                 agent.replay()
 
-                episode_rewards.append(r)
-                samples.append([s, s1, a, r])
-
+                s = s1
                 episode_reward += r
-
-            samples = episode_rerewarding(samples, episode_rewards)
-            for sample in samples:
-                memory.memorize(sample)
 
             # Save for some statistics
             rewards.append(episode_reward)
