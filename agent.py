@@ -5,7 +5,7 @@ class CartpoleAgent(object):
 
     def __init__(self, brain, action_space, action_space_size,
                  state_size, memory, start_explore_rate=1.,
-                 explore_decay=0.95, min_explore_rate=0.05,
+                 explore_decay=0.99, min_explore_rate=0.05,
                  gamma=0.95):
 
         self._net = brain
@@ -32,7 +32,12 @@ class CartpoleAgent(object):
     def replay(self, batch_size=32):
         batch = self._memory.remember(batch_size)
         x, y = self.__get_targets(batch)
-        self._net.train(x, y, batch_size=batch_size)
+        hist = self._net.train(x, y, batch_size=batch_size)
+
+        self._explore_rate = max(self._min_explore_rate,
+                                 self._explore_rate*self._explore_decay)
+
+        return np.mean(hist.history['loss'])
 
     def __get_targets(self, batch):
         x = np.zeros((len(batch), self._state_size),
@@ -44,8 +49,6 @@ class CartpoleAgent(object):
         put_xrange = range(self._state_size)
         put_yrange = range(self._action_space_size)
         for s, s1, a, r in batch:
-            s = np.reshape(s, (1, self._state_size))
-            s1 = np.reshape(s, (1, self._state_size))
             q_target = self._net.predict(s)
             action_q = r + self._gamma*max(self._net.predict(s1))
 

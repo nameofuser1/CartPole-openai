@@ -64,7 +64,7 @@ class KerasQNet(Net):
         return self
 
     def train(self, x, y, batch_size=32, epochs=1, verbose=0):
-        self._model.fit(x, y, batch_size=batch_size, verbose=verbose)
+        return self._model.fit(x, y, batch_size=batch_size, verbose=verbose)
 
     def predict(self, x):
         return self._model.predict(x).flatten()
