@@ -34,7 +34,7 @@ def env_step(env, a):
 def process_sample(sample, c=0., max_c=200.):
     s0 = sample[0][0]
     theta = s0[0]
-    # a = sample[2]
+    a = sample[2]
 
     # From 0.1 to 15
     # theta_deg = max(abs(theta)*180./np.pi, 0.1)
