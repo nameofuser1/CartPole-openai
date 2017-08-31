@@ -4,7 +4,6 @@ from net import KerasQNet
 import numpy as np
 import gym
 
-from time import sleep
 import matplotlib.pyplot as plt
 
 
@@ -35,15 +34,15 @@ def env_step(env, a):
 def process_sample(sample, c=0., max_c=200.):
     s0 = sample[0][0]
     theta = s0[0]
-    a = sample[2]
+    # a = sample[2]
 
     # From 0.1 to 15
-    # theta_deg = max(abs(theta)*180./np.pi, 0.1)
-    # sample[3] *= min(c/theta_deg, max_c)
-    # print(sample)
+    theta_deg = max(abs(theta)*180./np.pi, 0.1)
+    sample[3] *= min(c/theta_deg, max_c)
+    print(sample)
 
-    if (theta < 0 and a == ACTION_LEFT) or (theta > 0 and a == ACTION_RIGHT):
-        sample[3] *= c
+    # if (theta < 0 and a == ACTION_LEFT) or (theta > 0 and a == ACTION_RIGHT):
+    #    sample[3] *= c
 
     return sample
 
