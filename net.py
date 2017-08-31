@@ -44,7 +44,7 @@ class KerasQNet(Net):
 
         if hidden_sizes is None:
             model.add(Dense(output_size, input_dim=input_size,
-                            activation='relu'))
+                            activation='linear'))
 
         else:
             activation = 'relu'

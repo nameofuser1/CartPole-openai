@@ -108,7 +108,7 @@ if __name__ == "__main__":
             print("Episode %d reward: %f" % (i, episode_reward))
 
             if i % 100 == 0 and i != 0:
-                mean_r = np.mean(rewards([-100]))
+                mean_r = np.mean(rewards[-100])
 
                 if mean_r > 500:
                     print("Training finished on %d episode" % i)
