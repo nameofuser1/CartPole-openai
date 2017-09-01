@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 EPISODES = 10000
 
 STATE_SIZE = 2
+STATE_INDICES = (2, 3)
 ACTION_SPACE_SIZE = 2
 MEMORY_SIZE = 512
 
@@ -17,11 +18,11 @@ ACTION_LEFT = 0
 ACTION_RIGHT = 1
 
 LR = 1e-3
-C = 20.
+C = 25.
 
 
 def reshape_state(s):
-    return np.reshape(np.asarray(s[2:]), (1, STATE_SIZE))
+    return np.reshape(np.take(s, STATE_INDICES), (1, STATE_SIZE))
 
 
 def env_step(env, a):
@@ -31,19 +32,21 @@ def env_step(env, a):
     return s, r, d, _
 
 
-def process_sample(sample, c=0., max_c=200.):
+def process_sample(sample, c=10., max_c=30., max_reward=50.):
     s0 = sample[0][0]
     theta = s0[0]
     a = sample[2]
 
     # From 0.1 to 15
-    # theta_deg = max(abs(theta)*180./np.pi, 0.1)
+    # theta_deg = max(abs(theta)*180./np.pi, 1.1)
+    # c *= min(1./np.log(theta_deg), max_c)
     # sample[3] *= min(c/theta_deg, max_c)
     # print(sample)
 
     if (theta < 0 and a == ACTION_LEFT) or (theta > 0 and a == ACTION_RIGHT):
         sample[3] *= c
 
+    sample[3] = min(sample[3], max_reward)
     return sample
 
 
