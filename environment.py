@@ -34,36 +34,22 @@ def env_step(env, a):
 
 def process_sample(sample, c=10., use_done=False):
     s0 = sample[0][0]
+    x = s0[0]
     theta = s0[2]
     a = sample[2]
     done = sample[4]
     steps = sample[5]
 
-    # From 1.1 to 15
-    # theta_deg = max(abs(theta)*180./np.pi, 1.1)
-    # c *= 1/theta_deg
-    # sample[3] *= c
-    # print(sample)
+    # From 0 to 15
+    theta_deg = abs(theta)*180./np.pi
+    theta_k = 15 - np.exp(0.1848*theta_deg) - 1
+    xk = 2.4 - np.exp(0.5099*abs(x)) - 1
 
-    if (theta < 0 and a == ACTION_LEFT) or (theta > 0 and a == ACTION_RIGHT):
-        sample[3] *= c
+    sample[3] *= c*xk*theta_k
 
-    if use_done and done:
-        if steps <= 20:
-            sample[3] *= 0.9
-
-        elif steps <= 50:
-            sample[3] *= 0.7
-
-        elif steps <= 100:
-            sample[3] *= 0.5
-
-        elif steps < 500:
-            sample[3] *= 0.3
-
-        # IF steps == 500(maximum number of steps) then everything is fine
-
+    print((x, xk, theta_deg, theta_k))
     print(sample)
+    print("")
     return sample
 
 
@@ -99,7 +85,7 @@ if __name__ == "__main__":
     memory = fill_memory(env, memory)
 
     agent = CartpoleAgent(net, env.action_space, ACTION_SPACE_SIZE,
-                          STATE_SIZE, memory, min_explore_rate=0.2)
+                          STATE_SIZE, memory, min_explore_rate=0.05)
 
     rewards = []
     losses = []
