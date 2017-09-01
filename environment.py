@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 
 EPISODES = 10000
 
-STATE_SIZE = 2
-STATE_INDICES = (2, 3)
+STATE_SIZE = 4
+STATE_INDICES = (0, 1, 2, 3)
 ACTION_SPACE_SIZE = 2
 MEMORY_SIZE = 512
 
@@ -18,7 +18,7 @@ ACTION_LEFT = 0
 ACTION_RIGHT = 1
 
 LR = 1e-3
-C = 25.
+C = 20.
 
 
 def reshape_state(s):
@@ -32,37 +32,57 @@ def env_step(env, a):
     return s, r, d, _
 
 
-def process_sample(sample, c=10., max_c=30., max_reward=50.):
+def process_sample(sample, c=10., use_done=False):
     s0 = sample[0][0]
-    theta = s0[0]
+    theta = s0[2]
     a = sample[2]
+    done = sample[4]
+    steps = sample[5]
 
-    # From 0.1 to 15
+    # From 1.1 to 15
     # theta_deg = max(abs(theta)*180./np.pi, 1.1)
-    # c *= min(1./np.log(theta_deg), max_c)
-    # sample[3] *= min(c/theta_deg, max_c)
+    # c *= 1/theta_deg
+    # sample[3] *= c
     # print(sample)
 
     if (theta < 0 and a == ACTION_LEFT) or (theta > 0 and a == ACTION_RIGHT):
         sample[3] *= c
 
-    sample[3] = min(sample[3], max_reward)
+    if use_done and done:
+        if steps <= 20:
+            sample[3] *= 0.9
+
+        elif steps <= 50:
+            sample[3] *= 0.7
+
+        elif steps <= 100:
+            sample[3] *= 0.5
+
+        elif steps < 500:
+            sample[3] *= 0.3
+
+        # IF steps == 500(maximum number of steps) then everything is fine
+
+    print(sample)
     return sample
 
 
 def fill_memory(env, memory):
     s = reshape_state(env.reset())
+    steps = 0
 
     while memory.capacity != memory.size():
         a = env.action_space.sample()
         s1, r, d, _ = env_step(env, a)
+        steps += 1
 
-        sample = process_sample([s, s1, a, r], c=C)
+        sample = process_sample([s, s1, a, r, d, steps], c=C)
         memory.memorize(sample)
 
         s = s1
 
         if d:
+            steps = 0
             env.reset()
 
     return memory
@@ -71,7 +91,7 @@ def fill_memory(env, memory):
 if __name__ == "__main__":
     env = gym.make("CartPole-v1")
 
-    hidden_sizes = [16, 16]
+    hidden_sizes = [8, 8]
     net = KerasQNet()
     net = net.build_net(STATE_SIZE, hidden_sizes, ACTION_SPACE_SIZE,
                         lr=LR)
@@ -79,7 +99,7 @@ if __name__ == "__main__":
     memory = fill_memory(env, memory)
 
     agent = CartpoleAgent(net, env.action_space, ACTION_SPACE_SIZE,
-                          STATE_SIZE, memory)
+                          STATE_SIZE, memory, min_explore_rate=0.2)
 
     rewards = []
     losses = []
@@ -92,14 +112,17 @@ if __name__ == "__main__":
             s = reshape_state(env.reset())
             done = False
 
+            steps = 0
             episode_reward = 0
 
             while not done:
                 env.render()
                 a = agent.act(s)
                 s1, r, done, _ = env_step(env, a)
+                steps += 1
 
-                sample = process_sample([s, s1, a, r], c=C)
+                sample = process_sample([s, s1, a, r, done, steps],
+                                        c=C, use_done=True)
                 agent.memorize(sample)
                 losses.append(agent.replay())
 
