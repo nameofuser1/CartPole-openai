@@ -1,7 +1,9 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
 from collections import deque
+from sortedcontainers import SortedList
 from random import sample
 import numpy as np
+from itertools import izip_longest
 
 
 class Memory(object):
@@ -20,14 +22,40 @@ class Memory(object):
 
     @abstractmethod
     def size(self):
-        pass
+        raise NotImplementedError()
+
+    @abstractproperty
+    def capacity(self):
+        raise NotImplementedError()
 
 
-class SimpleMemory(Memory):
+class DequeMemory(Memory):
 
     def __init__(self, capacity=2000):
-        self._memory = deque(maxlen=capacity)
         self._capacity = capacity
+        self._memory = deque(maxlen=capacity)
+
+    def size(self):
+        return len(self._memory)
+
+    @property
+    def capacity(self):
+        return self._capacity
+
+    @capacity.setter
+    def capacity(self, v):
+        self._capacity = v
+
+
+def grouper(iterable, n):
+    args = [iter(iterable)]*n
+    return izip_longest(*args)
+
+
+class SimpleMemory(DequeMemory):
+
+    def __init__(self, capacity=2000):
+        super(SimpleMemory, self).__init__(capacity=capacity)
 
     def memorize(self, state):
         """
@@ -42,9 +70,63 @@ class SimpleMemory(Memory):
         """
         return sample(self._memory, batch_size)
 
-    def size(self):
-        return len(self._memory)
 
-    @property
-    def capacity(self):
-        return self._capacity
+class PrioritizedMemory(DequeMemory):
+
+    def __init__(self, iterable=None, capacity=2000):
+        super(PrioritizedMemory, self).__init__(capacity=capacity)
+
+        # Keeps weights in sorted order for sampling
+        self._weights = SortedList()
+
+        # Keeps sum of weights
+        self._weights_sum = 0
+
+        if iterable is not None:
+            for item in iterable:
+                self.memorize(item[0], item[1])
+
+    def remember(self, batch_size=32):
+        """
+        O(n)
+        """
+        return self.__sample(batch_size)
+
+    def memorize(self, sample, weight):
+        """
+        O(log(n))
+        """
+        item = (weight, sample)
+
+        if len(self._memory) == self._capacity:
+            # O(1) complexity
+            discarded = self._memory.popleft()
+            self._weights_sum -= discarded[0]
+            # O(log(n))
+            self._weights.discard(discarded)
+
+        self._memory.append(item)
+        self._weights_sum += weight
+
+        # Sorted by weight, O(log(N))
+        self._weights.add(item)
+
+    def __sample(self, num):
+        samples = []
+        for i in xrange(num):
+            samples.append(self.__sample_one())
+
+        return samples
+
+    def __sample_one(self):
+        """
+        Sampling one item in O(n)
+        """
+        rand = np.random.rand() * self._weights_sum
+        s = 0
+        for i in xrange(self.size()):
+            s += self._weights[i][0]
+
+            if s >= rand:
+                # Return omitting weight
+                return self._weights[i][1]
