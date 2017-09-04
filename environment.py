@@ -60,11 +60,7 @@ def exponential_decay_rewards(sample, c):
     s0 = sample[0][0]
     x = s0[0]
     theta = s0[2]
-    # a = sample[2]
-    # done = sample[4]
-    # steps = sample[5]
 
-    # From 0 to 15
     theta_deg = min(abs(theta*180./np.pi), 15.)
     theta_k = exponential_decay_coeff(theta_deg, 11.)
     xk = exponential_decay_coeff(abs(x), 2.4)
@@ -86,7 +82,11 @@ def fill_memory(env, agent):
     steps = 0
 
     while memory.capacity != memory.size():
-        a = env.action_space.sample()
+        # Since we initialized agent with epxlore_rate equal to 1
+        #   it will generate random samples.
+        # However if we loaded model, we should initialize agent
+        #   with minimal explore_rate in order not to litter the memory
+        a = agent.act(s)
         s1, r, d, _ = env_step(env, a)
         steps += 1
 
@@ -103,17 +103,27 @@ def fill_memory(env, agent):
     return memory
 
 
+LOAD_MODEL = None
+
+
 if __name__ == "__main__":
     env = gym.make("CartPole-v1")
 
-    hidden_sizes = [8]
-    net = KerasQNet()
-    net = net.build_net(STATE_SIZE, hidden_sizes, ACTION_SPACE_SIZE,
-                        lr=LR)
-    memory = PrioritizedMemory(capacity=MEMORY_SIZE)
+    hidden_sizes = [16]
+    net = KerasQNet(model_path=LOAD_MODEL)
 
+    # For pre-built models
+    explore_rate = 0.05
+
+    if LOAD_MODEL is None:
+        explore_rate = 1.
+        net = net.build_net(STATE_SIZE, hidden_sizes, ACTION_SPACE_SIZE,
+                            lr=LR)
+
+    memory = PrioritizedMemory(capacity=MEMORY_SIZE)
     agent = CartpoleAgent(net, env.action_space, ACTION_SPACE_SIZE,
-                          STATE_SIZE, memory, min_explore_rate=0.1)
+                          STATE_SIZE, memory, min_explore_rate=0.05,
+                          start_explore_rate=explore_rate)
 
     fill_memory(env, agent)
 
@@ -122,7 +132,7 @@ if __name__ == "__main__":
 
     try:
         env.reset()
-        gym.wrappers.Monitor(env, 'monitor/recording-2', force=True)
+        env = gym.wrappers.Monitor(env, 'monitor/recording-2', force=True)
 
         for i in range(EPISODES):
             s = reshape_state(env.reset())
