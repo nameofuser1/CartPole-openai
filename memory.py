@@ -92,11 +92,13 @@ class PrioritizedMemory(DequeMemory):
         """
         return self.__sample(batch_size)
 
-    def memorize(self, sample, weight):
+    def memorize(self, item):
         """
         O(log(n))
-        """
+
         item = (weight, sample)
+        """
+        weight = item[0]
 
         if len(self._memory) == self._capacity:
             # O(1) complexity
@@ -128,5 +130,4 @@ class PrioritizedMemory(DequeMemory):
             s += self._weights[i][0]
 
             if s >= rand:
-                # Return omitting weight
-                return self._weights[i][1]
+                return self._weights[i]
