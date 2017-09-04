@@ -78,6 +78,7 @@ def process_sample(sample, c=10., rew_type='side_rewards'):
 
 
 def fill_memory(env, agent):
+    memory = agent._memory
     s = reshape_state(env.reset())
     steps = 0
 
@@ -99,8 +100,6 @@ def fill_memory(env, agent):
         if d:
             steps = 0
             env.reset()
-
-    return memory
 
 
 LOAD_MODEL = None
