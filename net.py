@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import keras.backend as K
-from keras.models import Sequential
+from keras.models import Sequential, load_model
+from keras import losses
 from keras.layers import Dense
 from keras.optimizers import SGD
 
@@ -32,11 +33,35 @@ def simple_qloss(y_true, y_pred):
     err = y_true - y_pred
     return K.mean(K.square(err))
 
+# Fix for loading models with custom loss function
+# In future have to replace with built-in MSE loss
+losses.simple_qloss = simple_qloss
 
-class KerasQNet(Net):
+class KerasNet(Net):
 
     def __init__(self):
         self._model = None
+
+    def save(self, fname):
+        self._model.save(fname)
+
+    def load(self, fname):
+        self._model = load_model(fname)
+
+    def train(self, x, y, batch_size=32, epochs=1, verbose=0):
+        return self._model.fit(x, y, batch_size=batch_size, verbose=verbose)
+
+    def predict(self, x):
+        return self._model.predict(x).flatten()
+
+
+class KerasQNet(KerasNet):
+
+    def __init__(self, model_path=None):
+        super(KerasQNet, self).__init__()
+
+        if model_path is not None:
+            self.load(model_path)
 
     def build_net(self, input_size, hidden_sizes, output_size,
                   lr=0.01, loss=simple_qloss):
@@ -62,12 +87,3 @@ class KerasQNet(Net):
 
         self._model = model
         return self
-
-    def train(self, x, y, batch_size=32, epochs=1, verbose=0):
-        return self._model.fit(x, y, batch_size=batch_size, verbose=verbose)
-
-    def predict(self, x):
-        return self._model.predict(x).flatten()
-
-    def save(self, fname):
-        self._model.save(fname)
