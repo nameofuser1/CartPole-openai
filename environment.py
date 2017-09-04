@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     try:
         env.reset()
-        gym.wrappers.Monitor(env, 'monitor/recoring-2', force=True)
+        gym.wrappers.Monitor(env, 'monitor/recording-2', force=True)
 
         for i in range(EPISODES):
             s = reshape_state(env.reset())
