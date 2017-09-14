@@ -5,6 +5,7 @@ import numpy as np
 import gym
 
 import matplotlib.pyplot as plt
+import logging
 
 
 EPISODES = 10000
@@ -21,6 +22,19 @@ ACTION_RIGHT = 1
 
 LR = 1e-3
 C = 20.
+
+
+WEIGHTS_PER_LOG = 5
+
+# Logging setup
+weights_fhanlder = logging.FileHandler("logs/weights.log", 'w')
+weights_fhanlder.setLevel(logging.DEBUG)
+
+weights_logger = logging.getLogger(__name__ + "_weights")
+weights_logger.setLevel(logging.DEBUG)
+weights_logger.propagate = False
+
+weights_logger.addHandler(weights_fhanlder)
 
 
 # SAMPLE FORM
@@ -103,21 +117,22 @@ def fill_memory(env, agent):
 
 
 LOAD_MODEL = None
+LOAD_GYM_INFO = False
 
 
 if __name__ == "__main__":
     env = gym.make("CartPole-v1")
-
     hidden_sizes = [16]
-    net = KerasQNet(model_path=LOAD_MODEL)
 
     # For pre-built models
     explore_rate = 0.05
 
     if LOAD_MODEL is None:
         explore_rate = 1.
-        net = net.build_net(STATE_SIZE, hidden_sizes, ACTION_SPACE_SIZE,
-                            lr=LR)
+        net = KerasQNet.build_net(STATE_SIZE, hidden_sizes, ACTION_SPACE_SIZE,
+                                  lr=LR)
+    else:
+        net = KerasQNet.load(LOAD_MODEL)
 
     memory = PrioritizedMemory(capacity=MEMORY_SIZE)
     agent = CartpoleAgent(net, env.action_space, ACTION_SPACE_SIZE,
@@ -126,12 +141,18 @@ if __name__ == "__main__":
 
     fill_memory(env, agent)
 
+    rewards_sum = 0
     rewards = []
     losses = []
 
+    last_reward = 0
+    dropped = False
+    episode_after_drop = 5
+
     try:
         env.reset()
-        env = gym.wrappers.Monitor(env, 'monitor/recording-2', force=True)
+        env = gym.wrappers.Monitor(env, 'monitor/recording-2',
+                                   resume=LOAD_GYM_INFO, force=True)
 
         for i in range(EPISODES):
             s = reshape_state(env.reset())
@@ -155,7 +176,9 @@ if __name__ == "__main__":
                 episode_reward += r
 
             # Save for some statistics
+            weights_logger.debug(net.weights)
             rewards.append(episode_reward)
+
             print("Episode %d reward: %f" % (i, episode_reward))
 
             if i % 100 == 0 and i != 0:

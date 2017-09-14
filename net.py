@@ -1,6 +1,7 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
+from utils import abstractstatic
 import keras.backend as K
-from keras.models import Sequential, load_model
+from keras.models import Sequential, load_model, model_from_json
 from keras import losses
 from keras.layers import Dense
 from keras.optimizers import SGD
@@ -28,6 +29,18 @@ class Net(object):
     def save(self, name):
         pass
 
+    @abstractstatic
+    def load(fname):
+        pass
+
+    @abstractmethod
+    def copy(self):
+        pass
+
+    @abstractproperty
+    def weights(self):
+        pass
+
 
 def simple_qloss(y_true, y_pred):
     err = y_true - y_pred
@@ -37,16 +50,23 @@ def simple_qloss(y_true, y_pred):
 # In future have to replace with built-in MSE loss
 losses.simple_qloss = simple_qloss
 
+
 class KerasNet(Net):
 
-    def __init__(self):
-        self._model = None
+    def __init__(self, model):
+        self._model = model
 
     def save(self, fname):
         self._model.save(fname)
 
-    def load(self, fname):
-        self._model = load_model(fname)
+    @staticmethod
+    def load(fname):
+        net = KerasQNet(model=load_model(fname))
+        return net
+
+    def copy(self):
+        model = model_from_json(self._model.to_json())
+        return KerasQNet(model=model)
 
     def train(self, x, y, batch_size=32, epochs=1, verbose=0):
         return self._model.fit(x, y, batch_size=batch_size, verbose=verbose)
@@ -54,16 +74,22 @@ class KerasNet(Net):
     def predict(self, x):
         return self._model.predict(x).flatten()
 
+    @property
+    def weights(self):
+        return self._model.get_weights()
+
+    @weights.setter
+    def weights(self, w):
+        self._model.set_weights(w)
+
 
 class KerasQNet(KerasNet):
 
-    def __init__(self, model_path=None):
-        super(KerasQNet, self).__init__()
+    def __init__(self, model=None):
+        super(KerasQNet, self).__init__(model=model)
 
-        if model_path is not None:
-            self.load(model_path)
-
-    def build_net(self, input_size, hidden_sizes, output_size,
+    @staticmethod
+    def build_net(input_size, hidden_sizes, output_size,
                   lr=0.01, loss=simple_qloss):
         model = Sequential()
 
@@ -85,5 +111,4 @@ class KerasQNet(KerasNet):
         opt = SGD(lr=lr)
         model.compile(optimizer=opt, loss=loss)
 
-        self._model = model
-        return self
+        return KerasQNet(model=model)

@@ -111,7 +111,13 @@ class PrioritizedMemory(DequeMemory):
         self._weights_sum += weight
 
         # Sorted by weight, O(log(N))
-        self._weights.add(item)
+        try:
+            self._weights.add(item)
+        except ValueError as e:
+            print(e)
+            print("Trying to memorize item:\r\n\t" + str(item))
+            print("Number of items in memory: " +
+                    str(self._memory._weights.count(item)))
 
     def __sample(self, num):
         samples = []

@@ -7,24 +7,43 @@ class CartpoleAgent(object):
     def __init__(self, brain, action_space, action_space_size,
                  state_size, memory, start_explore_rate=1.,
                  explore_decay=0.99, min_explore_rate=0.05,
-                 gamma=0.95):
+                 gamma=0.95, update_target_freq=10.):
 
+        # Q-networks
         self._net = brain
+        self._target_net = brain.copy()
+
+        # For sampling and learning
         self._action_space = action_space
         self._action_space_size = action_space_size
         self._state_size = state_size
+
+        # Memory for experience replay
         self._memory = memory
+
+        # Next-state Q-value factor
+        self._gamma = gamma
+
+        # Explorations parameters
         self._explore_rate = start_explore_rate
         self._explore_decay = explore_decay
         self._min_explore_rate = min_explore_rate
-        self._gamma = gamma
+
+        # Params for updating target network
+        self._update_target_freq = update_target_freq
+        self._target_steps = 0
 
         fhandler = logging.FileHandler("logs/agent.log", 'w')
         fhandler.setLevel(logging.DEBUG)
 
-        self._logger = logging.getLogger()
+        self._logger = logging.getLogger(__name__ + "_all")
         self._logger.setLevel(logging.DEBUG)
+        self._logger.propagate = False
+
         self._logger.addHandler(fhandler)
+
+    def _update_target_net(self):
+        self._target_net.weights = self._net.weights
 
     def act(self, s):
         if np.random.rand() <= self._explore_rate:
@@ -40,10 +59,21 @@ class CartpoleAgent(object):
         a = sample[2]
         r = sample[3]
 
+        # Current q-values for state S
         q_target = self._net.predict(s)
-        action_q = r + self._gamma*max(self._net.predict(s1))
-        dq = np.abs(q_target[a] - action_q)
 
+        # Double DQN
+        # https://papers.nips.cc/paper/3964-double-q-learning.pdf Double
+        #   q-learning
+        # https://arxiv.org/pdf/1509.06461.pdf DDQN
+        primary_net_q = self._net.predict(s1)
+        target_net_q = self._target_net.predict(s1)
+
+        # Choose action and its' q-values accroding to out primary network
+        best_a = np.argmax(primary_net_q)
+        action_q = r + self._gamma*target_net_q[best_a]
+
+        dq = np.abs(q_target[a] - action_q)
         q_target[a] = action_q
 
         # Memorize with dq as priority weight
@@ -54,8 +84,16 @@ class CartpoleAgent(object):
         """
         """
         batch = self._memory.remember(batch_size)
+        self._logger.debug("Training on batch:\r\n" + str(batch) + "\r\n")
+
         x, y = self.__get_targets(batch)
         hist = self._net.train(x, y, batch_size=batch_size)
+
+        self._target_steps += 1
+
+        if self._target_steps == self._update_target_freq:
+            self._update_target_net()
+            self._target_steps = 0
 
         self._explore_rate = max(self._min_explore_rate,
                                  self._explore_rate*self._explore_decay)
