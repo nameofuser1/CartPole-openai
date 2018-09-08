@@ -8,6 +8,10 @@ class CartpoleAgent(object):
                  state_size, memory, start_explore_rate=1.,
                  explore_decay=0.99, min_explore_rate=0.05,
                  gamma=0.95, update_target_freq=10.):
+        """
+        brain       ---     instance of a network class(net.py)
+
+        """
 
         # Q-networks
         self._net = brain
@@ -54,6 +58,14 @@ class CartpoleAgent(object):
         return action
 
     def memorize(self, sample):
+        """
+        sample = [s, s1, a, r]
+
+        s   --- initial state
+        s1  --- next state
+        a   --- action to get [s -> s1]
+        r   --- reward for that action
+        """
         s = sample[0]
         s1 = sample[1]
         a = sample[2]
@@ -82,6 +94,7 @@ class CartpoleAgent(object):
 
     def replay(self, batch_size=32):
         """
+        Performs batch training. Batch is retrieved from memory
         """
         batch = self._memory.remember(batch_size)
         self._logger.debug("Training on batch:\r\n" + str(batch) + "\r\n")
@@ -103,6 +116,10 @@ class CartpoleAgent(object):
     def __get_targets(self, batch):
         """
         batch = [(weight0, (q0, sample0)), (weight1, (q1, sample1)), ...]
+
+        weight  --- indicates how useful this training sample is
+        q       --- target QValues
+        sample  --- training sample containing [s, s1, a, r, d, steps]
         """
         x = np.zeros((len(batch), self._state_size),
                      dtype=np.float32)
@@ -119,5 +136,6 @@ class CartpoleAgent(object):
 
             np.put(x[k], put_xrange, s)
             np.put(y[k], put_yrange, q_target)
+            k += 1
 
         return x, y

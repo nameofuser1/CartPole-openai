@@ -13,7 +13,9 @@ EPISODES = 10000
 STATE_SIZE = 4
 STATE_INDICES = (0, 1, 2, 3)
 ACTION_SPACE_SIZE = 2
-MEMORY_SIZE = 512
+MEMORY_SIZE = 1024
+BATCH_SIZE = 64
+TARGET_NET_UPDATE_ITERS = 350
 
 REWARD_TYPE = 'side_rewards'
 
@@ -58,6 +60,16 @@ def exponential_decay_coeff(theta, c):
     return (-np.exp(k*theta) + b) / c
 
 
+def reward_common(sample, c):
+    theta = sample[0][0][2]
+    x = sample[0][0][0]
+
+    if(abs(theta) > 8 or abs(x) > 1.50):
+        sample[3] = 0
+
+    return sample
+
+
 def side_rewards(sample, c):
     action = sample[2]
     theta = sample[0][0][2]
@@ -75,19 +87,33 @@ def exponential_decay_rewards(sample, c):
     x = s0[0]
     theta = s0[2]
 
-    theta_deg = min(abs(theta*180./np.pi), 15.)
-    theta_k = exponential_decay_coeff(theta_deg, 11.)
-    xk = exponential_decay_coeff(abs(x), 2.4)
+    if(abs(x) >= 1.8 or abs(theta) >= 10):
+        sample[3] = 0
+    else:
+        theta_deg = min(abs(theta*180./np.pi), 10.)
+        theta_k = exponential_decay_coeff(theta_deg, 7.)
+        xk = exponential_decay_coeff(abs(x), 2.4)
 
-    sample[3] *= c*xk*theta_k
+        sample[3] *= c*xk*theta_k
     return sample
 
 
 REWARDS = {'side_rewards': side_rewards,
-           'exp_rewards': exponential_decay_rewards}
+           'exp_rewards': exponential_decay_rewards,
+           'com_rewards': reward_common}
 
 
 def process_sample(sample, c=10., rew_type='side_rewards'):
+    """
+    sample = [s, s1, a, r, d, steps]
+
+    s       --- initial state
+    s1      --- next state
+    a       --- action to get from s to s1
+    r       --- reward for this action
+    d       --- done state
+    steps   --- number of steps in the episode
+    """
     return REWARDS[rew_type](sample, c)
 
 
@@ -107,6 +133,7 @@ def fill_memory(env, agent):
 
         sample = process_sample([s, s1, a, r, d, steps], c=C,
                                 rew_type=REWARD_TYPE)
+        print(sample)
         agent.memorize(sample)
 
         s = s1
@@ -137,7 +164,8 @@ if __name__ == "__main__":
     memory = PrioritizedMemory(capacity=MEMORY_SIZE)
     agent = CartpoleAgent(net, env.action_space, ACTION_SPACE_SIZE,
                           STATE_SIZE, memory, min_explore_rate=0.05,
-                          start_explore_rate=explore_rate)
+                          start_explore_rate=explore_rate,
+                          update_target_freq=TARGET_NET_UPDATE_ITERS)
 
     fill_memory(env, agent)
 
@@ -170,7 +198,7 @@ if __name__ == "__main__":
                 sample = process_sample([s, s1, a, r, done, steps],
                                         c=C, rew_type=REWARD_TYPE)
                 agent.memorize(sample)
-                losses.append(agent.replay())
+                losses.append(agent.replay(batch_size=BATCH_SIZE))
 
                 s = s1
                 episode_reward += r
@@ -194,7 +222,11 @@ if __name__ == "__main__":
         fig = plt.figure()
         ax1 = fig.add_subplot(211)
         ax1.plot(rewards)
+        ax1.set_xlabel("Episode")
+        ax1.set_ylabel("Reward")
         ax2 = fig.add_subplot(212)
+        ax2.set_xlabel("Trains step")
+        ax2.set_ylabel("Loss")
         ax2.plot(losses)
         plt.tight_layout()
 
