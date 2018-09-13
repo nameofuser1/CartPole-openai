@@ -64,8 +64,8 @@ def reward_common(sample, c):
     theta = sample[0][0][2]
     x = sample[0][0][0]
 
-    if(abs(theta) > 8 or abs(x) > 1.50):
-        sample[3] = 0
+    if(abs(theta) > 8 or abs(x) > 1.80):
+        sample[3] = -30
 
     return sample
 
@@ -133,7 +133,6 @@ def fill_memory(env, agent):
 
         sample = process_sample([s, s1, a, r, d, steps], c=C,
                                 rew_type=REWARD_TYPE)
-        print(sample)
         agent.memorize(sample)
 
         s = s1
@@ -190,7 +189,7 @@ if __name__ == "__main__":
             episode_reward = 0
 
             while not done:
-                env.render()
+                # env.render()
                 a = agent.act(s)
                 s1, r, done, _ = env_step(env, a)
                 steps += 1
@@ -204,7 +203,7 @@ if __name__ == "__main__":
                 episode_reward += r
 
             # Save for some statistics
-            weights_logger.debug(net.weights)
+            # weights_logger.debug(net.weights)
             rewards.append(episode_reward)
 
             print("Episode %d reward: %f" % (i, episode_reward))
