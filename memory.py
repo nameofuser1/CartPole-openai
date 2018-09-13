@@ -77,7 +77,7 @@ class PrioritizedMemory(DequeMemory):
         super(PrioritizedMemory, self).__init__(capacity=capacity)
 
         # Keeps weights in sorted order for sampling
-        self._weights = SortedList()
+        self._weights = SortedList(key=PrioritizedMemory.sort_key_fcn)
 
         # Keeps sum of weights
         self._weights_sum = 0
@@ -116,8 +116,7 @@ class PrioritizedMemory(DequeMemory):
         except ValueError as e:
             print(e)
             print("Trying to memorize item:\r\n\t" + str(item))
-            print("Number of items in memory: " +
-                    str(self._memory._weights.count(item)))
+            print("Last item:\r\n\r" + str(self._memory.popleft()))
 
     def __sample(self, num):
         samples = []
@@ -137,3 +136,7 @@ class PrioritizedMemory(DequeMemory):
 
             if s >= rand:
                 return self._weights[i]
+
+    @staticmethod
+    def sort_key_fcn(x):
+        return x[0]
